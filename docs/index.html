@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>When Titans Clash — Stock Monitor</title>
+<style>
+:root{color-scheme:light dark;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{margin:0;background:Canvas;color:CanvasText}header{padding:26px max(20px,calc((100vw - 1200px)/2));background:#202b3a;color:#fff}
+main{max-width:1200px;margin:auto;padding:22px 18px}.muted{opacity:.7}.stats{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0}.stat{padding:12px 16px;border:1px solid #8886;border-radius:10px;min-width:120px}.stat b{display:block;font-size:1.5rem}
+.controls{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0}input,select{padding:10px;border:1px solid #8888;border-radius:8px;background:Canvas;color:CanvasText}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #8884;vertical-align:top}th{position:sticky;top:0;background:Canvas}
+a{color:#438ee8}.pill{font-size:.78rem;padding:2px 7px;border:1px solid #8888;border-radius:99px;white-space:nowrap}.new{border-color:#219653;color:#219653}
+section{margin:28px 0}details{margin-top:10px}.empty{padding:28px;text-align:center;opacity:.7}
+@media(max-width:700px){table,tbody,tr,td{display:block}thead{display:none}tr{padding:10px 0;border-bottom:1px solid #8885}td{padding:3px 0;border:0}td:before{content:attr(data-label) ": ";font-weight:600}}
+</style></head><body>
+<header><h1>When Titans Clash — Stock Monitor</h1><div>New comic listings, stock changes and price history</div></header>
+<main><p id="status" class="muted">Loading latest inventory…</p>
+<div class="stats"><div class="stat"><b id="total">—</b>Tracked listings</div><div class="stat"><b id="newcount">—</b>New detections</div><div class="stat"><b id="changes">—</b>Recent changes</div><div class="stat"><b id="pages">—</b>Pages scanned</div></div>
+<div class="controls"><input id="q" type="search" placeholder="Search title, issue, condition…" style="flex:1;min-width:220px"><select id="statusFilter"><option value="all">All listings</option><option value="in_stock">In stock</option><option value="removed">Removed</option><option value="new">Newly detected</option></select><select id="sort"><option value="newest">Newest detected</option><option value="title">Title A–Z</option><option value="price">Price low–high</option></select></div>
+<section><h2>Comic inventory</h2><div style="overflow-x:auto"><table><thead><tr><th>Comic / issue</th><th>Grade / condition</th><th>Price</th><th>Detected</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div><div id="empty" class="empty" hidden>No matching listings found.</div></section>
+<section><details open><summary><b>Recent activity</b></summary><ul id="events"></ul></details></section>
+<p class="muted" id="note"></p><p class="muted">Source: <a href="https://www.whentitansclash.co.uk/" target="_blank" rel="noopener">When Titans Clash</a>. This monitor checks the public catalogue; dates are detection dates, not confirmed upload dates.</p>
+</main>
+<script>
+let db={items:{},events:[]};
+const $=id=>document.getElementById(id);
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+function date(s){if(!s)return "—";let d=new Date(s);return isNaN(d)?"—":d.toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});}
+function render(){
+ const all=Object.values(db.items||{}), events=(db.events||[]).slice().reverse();
+ $("total").textContent=all.filter(x=>x.status!=="removed").length;
+ $("newcount").textContent=events.filter(x=>x.type==="new_listing").length;
+ $("changes").textContent=events.length;$("pages").textContent=db.pages_scanned??"—";
+ $("status").textContent="Last scan: "+date(db.updated_at)+" · Inventory refreshes automatically every 12 hours.";
+ $("note").textContent=db.note||"";
+ const q=$("q").value.toLowerCase(), sf=$("statusFilter").value, sort=$("sort").value;
+ let items=all.filter(x=>{
+  const hay=[x.title,x.grade,x.condition,x.price].join(" ").toLowerCase();
+  return (!q||hay.includes(q))&&(sf==="all"||(sf==="new"?!!x.new_detected&&x.status!=="removed":x.status===sf));
+ });
+ items.sort((a,b)=>sort==="title"?a.title.localeCompare(b.title):sort==="price"?(parseFloat((a.price||"").replace(/[£,]/g,""))||999999)-(parseFloat((b.price||"").replace(/[£,]/g,""))||999999):String(b.new_detected||b.first_seen||"").localeCompare(String(a.new_detected||a.first_seen||"")));
+ $("rows").innerHTML=items.map(x=>'<tr><td data-label="Comic"><a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>'+(x.new_detected?' <span class="pill new">NEW</span>':'')+'<div class="muted">'+esc(x.condition||"")+'</div></td><td data-label="Grade">'+esc(x.grade||"—")+'</td><td data-label="Price">'+esc(x.price||"—")+'</td><td data-label="Detected">'+date(x.new_detected||x.first_seen)+'</td><td data-label="Status"><span class="pill">'+esc(x.status||"in_stock")+'</span></td></tr>').join("");
+ $("empty").hidden=items.length>0;
+ $("events").innerHTML=events.slice(0,40).map(e=>'<li><b>'+esc(e.type.replace("_"," "))+'</b> · '+date(e.date)+' · <a href="'+esc(e.url)+'">'+esc(e.title)+'</a> '+(e.from?'('+esc(e.from)+' → '+esc(e.to)+')':e.price?'('+esc(e.price)+')':'')+'</li>').join("")||"<li>No changes recorded yet.</li>";
+}
+["q","statusFilter","sort"].forEach(id=>$(id).addEventListener("input",render));
+fetch("./data.json?"+Date.now()).then(r=>{if(!r.ok)throw Error("No inventory file yet");return r.json()}).then(d=>{db=d;render()}).catch(e=>{$("status").textContent="The first scan has not completed yet. Open the Actions tab in GitHub to check the initial run.";});
+</script></body></html>
