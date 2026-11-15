@@ -116,7 +116,7 @@ def extract_records(soup, page_url):
         notes = notes_match.group(1).strip() if notes_match else ""
         price = price_match.group(0).replace(" ", "")
         grade = grade_match.group(0).strip()
-        stable = "|".join((page_url, title.casefold(), price, grade.casefold(), notes[:180].casefold()))
+        stable = "|".join((page_url, title.casefold()))
         item_id = hashlib.sha1(stable.encode("utf-8")).hexdigest()
         found[item_id] = {
             "id": item_id,
