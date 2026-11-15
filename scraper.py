@@ -1,120 +1,180 @@
 #!/usr/bin/env python3
-"""Polite catalogue monitor for When Titans Clash. Runs in GitHub Actions."""
-import json, os, re, time
+"""Monitor individual comic records on the When Titans Clash SellerDeck catalogue."""
+import hashlib
+import json
+import os
+import re
+import time
 from datetime import datetime, timezone
 from urllib.parse import urljoin, urlparse, urldefrag
+
 import requests
 from bs4 import BeautifulSoup
 
 BASE = "https://www.whentitansclash.co.uk"
 SHOP = BASE + "/acatalog/shop.html"
 OUT = "docs/data.json"
-HEADERS = {"User-Agent": "WhenTitansClashStockMonitor/1.0 (polite periodic catalogue monitor)"}
+SCHEMA_VERSION = 2
+HEADERS = {"User-Agent": "WhenTitansClashStockMonitor/2.0 (polite periodic catalogue monitor)"}
 SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
+
 PRICE_RE = re.compile(r"£\s*[\d,]+(?:\.\d{1,2})?")
-GRADE_RE = re.compile(r"\b(?:NM|M|VF|FN|VG|G|F|P)(?:\s*/\s*(?:NM|M|VF|FN|VG|G|F|P))?\s*[+-]?\s*\(?\d(?:\.\d)?\)?", re.I)
-SKIP = ("basket", "cart", "checkout", "search", "contact", "privacy", "terms", "postage", "grading", "about")
+# SellerDeck product headings on this site include a grade in brackets.
+GRADE_RE = re.compile(
+    r"\b(?:FR|P|G|G\+|G-|G/VG|VG|VG\+|VG-|VG/FN|FN|FN\+|FN-|FN/VF|VF|VF\+|VF-|VF/NM|NM|M)"
+    r"\s*\(?\s*\d(?:\.\d)?\s*\)?",
+    re.I,
+)
+SKIP = ("basket", "cart", "checkout", "search", "contact", "privacy", "terms",
+        "postage", "grading", "about", "login", "register")
+
 
 def clean_url(href, base):
-    u = urldefrag(urljoin(base, href))[0]
-    p = urlparse(u)
-    if p.netloc not in ("www.whentitansclash.co.uk", "whentitansclash.co.uk") or not p.path.lower().endswith((".html", ".htm")):
+    url = urldefrag(urljoin(base, href))[0]
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
         return None
-    if any(s in u.lower() for s in SKIP): return None
-    return u
+    if parsed.netloc.lower() not in ("www.whentitansclash.co.uk", "whentitansclash.co.uk"):
+        return None
+    path = parsed.path.lower()
+    if not path.endswith((".html", ".htm")):
+        return None
+    if any(word in path for word in SKIP):
+        return None
+    return url
+
+
+def is_catalogue_page(url):
+    path = urlparse(url).path
+    # The shop index, publisher landing pages, series pages and their pagination.
+    # Other links (including images, basket and general site pages) are not crawl targets.
+    return (path.endswith("/shop.html")
+            or "/acatalog/when_titans_clash__" in path.lower()
+            or "/acatalog/____strong____" in path.lower())
+
 
 def fetch(url):
     try:
-        r = SESSION.get(url, timeout=25)
-        r.raise_for_status()
-        r.encoding = r.apparent_encoding or "windows-1252"
-        return BeautifulSoup(r.text, "html.parser")
-    except Exception as e:
-        print("Fetch failed:", url, str(e)[:180])
+        response = SESSION.get(url, timeout=30)
+        response.raise_for_status()
+        response.encoding = response.apparent_encoding or "windows-1252"
+        return BeautifulSoup(response.text, "html.parser")
+    except Exception as exc:
+        print("Fetch failed:", url, str(exc)[:180])
         return None
+
 
 def text_of(node):
     return re.sub(r"\s+", " ", node.get_text(" ", strip=True)).strip()
 
+
+def product_heading(node):
+    value = text_of(node)
+    return bool(value and GRADE_RE.search(value) and len(value) < 180)
+
+
+def listing_block(heading):
+    """Find the smallest surrounding block containing exactly this product."""
+    node = heading
+    for _ in range(7):
+        parent = getattr(node, "parent", None)
+        if parent is None:
+            break
+        node = parent
+        headings = [h for h in node.find_all(["h2", "h3", "h4"]) if product_heading(h)]
+        block_text = text_of(node)
+        if (len(headings) == 1 and headings[0] is heading
+                and PRICE_RE.search(block_text)
+                and re.search(r"\bCondition\s*:", block_text, re.I)):
+            return block_text
+    return ""
+
+
 def extract_records(soup, page_url):
     found = {}
-    # Product anchors usually sit inside a table/cell or a compact listing block.
-    for a in soup.find_all("a", href=True):
-        href = clean_url(a["href"], page_url)
-        label = text_of(a)
-        if not href or not label or href == page_url or "/acatalog/" not in href: continue
-        node = a
-        best = ""
-        for _ in range(5):
-            if not getattr(node, "parent", None): break
-            node = node.parent
-            t = text_of(node)
-            if PRICE_RE.search(t) and (GRADE_RE.search(t) or "Condition:" in t or len(t) > 35):
-                best = t
-                break
-        if not best: continue
-        price = PRICE_RE.search(best)
-        grade = GRADE_RE.search(best)
-        title = label if len(label) > 2 else best[:110]
-        # Avoid category-navigation anchors that happen to contain another product's price.
-        if len(title) > 180: title = title[:180]
-        found[href] = {
-            "id": href, "title": title, "price": price.group(0).replace(" ", "") if price else "",
-            "grade": grade.group(0) if grade else "",
-            "condition": best[:900], "url": href, "category_page": page_url
+    # This SellerDeck catalogue displays each comic as a product block within its
+    # series page; the individual stock item is not a separate HTML detail page.
+    for heading in soup.find_all(["h2", "h3", "h4"]):
+        title = text_of(heading)
+        if not product_heading(heading):
+            continue
+        block = listing_block(heading)
+        if not block:
+            continue
+        price_match = PRICE_RE.search(block)
+        grade_match = GRADE_RE.search(title)
+        if not price_match or not grade_match:
+            continue
+
+        # Keep the product-specific text only; never use a page-wide/sidebar block.
+        condition_match = re.search(r"\bCondition\s*:\s*(.*)", block, re.I)
+        condition = condition_match.group(1).strip() if condition_match else ""
+        if not condition:
+            continue
+        notes_match = re.search(r"\bNotes\s*:\s*(.*?)(?=\bCondition\s*:|$)", block, re.I)
+        notes = notes_match.group(1).strip() if notes_match else ""
+        price = price_match.group(0).replace(" ", "")
+        grade = grade_match.group(0).strip()
+        stable = "|".join((page_url, title.casefold(), price, grade.casefold(), notes[:180].casefold()))
+        item_id = hashlib.sha1(stable.encode("utf-8")).hexdigest()
+        found[item_id] = {
+            "id": item_id,
+            "title": title,
+            "price": price,
+            "grade": grade,
+            "condition": condition[:900],
+            "notes": notes[:500],
+            "url": page_url,
+            "category_page": page_url,
         }
-    # Some SellerDeck templates render each listing as headings rather than linked product cards.
-    for h in soup.find_all(["h2", "h3", "h4"]):
-        title = text_of(h)
-        if not title: continue
-        node = h
-        block = ""
-        for _ in range(4):
-            if not getattr(node, "parent", None): break
-            node = node.parent
-            t = text_of(node)
-            if PRICE_RE.search(t) and len(t) < 1600:
-                block = t; break
-        if not block: continue
-        links = [clean_url(a.get("href",""), page_url) for a in node.find_all("a", href=True)]
-        links = [u for u in links if u and u != page_url]
-        if not links: continue
-        href = links[0]
-        price = PRICE_RE.search(block); grade = GRADE_RE.search(block)
-        found.setdefault(href, {
-            "id": href, "title": title, "price": price.group(0).replace(" ", "") if price else "",
-            "grade": grade.group(0) if grade else "", "condition": block[:900],
-            "url": href, "category_page": page_url
-        })
     return found
+
 
 def main():
     os.makedirs("docs", exist_ok=True)
     try:
-        with open(OUT, encoding="utf-8") as f: old = json.load(f)
-    except Exception: old = {"initialized": False, "items": {}, "events": []}
-    queue = [SHOP]; seen_pages = set(); records = {}
+        with open(OUT, encoding="utf-8") as handle:
+            old = json.load(handle)
+    except Exception:
+        old = {}
+
+    # The previous scraper stored category/navigation pages as stock records.
+    # Discard that contaminated baseline once, then establish a clean baseline.
+    clean_baseline = old.get("schema_version") == SCHEMA_VERSION
+    previous = old.get("items", {}) if clean_baseline else {}
+    initialized = bool(old.get("initialized")) if clean_baseline else False
+    events = old.get("events", []) if clean_baseline else []
+
+    queue = [SHOP]
+    seen_pages = set()
+    records = {}
     max_pages = int(os.getenv("MAX_PAGES", "5000"))
+
     while queue and len(seen_pages) < max_pages:
         url = queue.pop(0)
-        if url in seen_pages: continue
+        if url in seen_pages:
+            continue
         seen_pages.add(url)
         soup = fetch(url)
-        if not soup: continue
+        if soup is None:
+            continue
+
         records.update(extract_records(soup, url))
-        # Discover every category and pagination page reachable from the catalogue index.
-        for a in soup.find_all("a", href=True):
-            nxt = clean_url(a["href"], url)
-            if nxt and nxt not in seen_pages and nxt not in queue:
-                # The index is the entry point; only follow catalogue pages and their pagination.
-                queue.append(nxt)
-        if len(seen_pages) % 20 == 0: print("Pages scanned:", len(seen_pages), "records:", len(records))
-        time.sleep(0.35)
+
+        # Use the site's own publisher/series navigation as a discovery map,
+        # but only enqueue known catalogue and pagination URL patterns.
+        for anchor in soup.find_all("a", href=True):
+            target = clean_url(anchor["href"], url)
+            if (target and is_catalogue_page(target)
+                    and target not in seen_pages and target not in queue):
+                queue.append(target)
+
+        if len(seen_pages) % 25 == 0:
+            print("Pages scanned:", len(seen_pages), "individual listings:", len(records))
+        time.sleep(0.4)
+
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    previous = old.get("items", {})
-    initialized = bool(old.get("initialized"))
-    events = old.get("events", [])
     current = {}
     for key, item in records.items():
         prior = previous.get(key)
@@ -123,27 +183,47 @@ def main():
         item["status"] = "in_stock"
         if prior:
             if prior.get("price") != item.get("price"):
-                events.append({"type":"price_change","date":now,"title":item["title"],"url":key,"from":prior.get("price",""),"to":item.get("price","")})
+                events.append({"type": "price_change", "date": now, "title": item["title"],
+                               "url": item["url"], "from": prior.get("price", ""),
+                               "to": item.get("price", "")})
             if prior.get("status") == "removed":
-                events.append({"type":"restocked","date":now,"title":item["title"],"url":key})
+                events.append({"type": "restocked", "date": now, "title": item["title"],
+                               "url": item["url"]})
         elif initialized:
             item["new_detected"] = now
-            events.append({"type":"new_listing","date":now,"title":item["title"],"url":key,"price":item.get("price","")})
+            events.append({"type": "new_listing", "date": now, "title": item["title"],
+                           "url": item["url"], "price": item.get("price", "")})
         current[key] = item
+
     for key, prior in previous.items():
         if key not in current:
             prior["missing_scans"] = int(prior.get("missing_scans", 0)) + 1
-            # Require two consecutive missed scans before marking a listing as removed.
             if prior["missing_scans"] >= 2 and prior.get("status") != "removed":
                 prior["status"] = "removed"
-                events.append({"type":"removed","date":now,"title":prior.get("title",""),"url":key})
+                events.append({"type": "removed", "date": now, "title": prior.get("title", ""),
+                               "url": prior.get("url", "")})
             current[key] = prior
-    # Bound event history so the JSON and dashboard stay responsive.
+
     events = events[-3000:]
-    data = {"updated_at":now,"initialized":True,"pages_scanned":len(seen_pages),
-            "scan_limit":max_pages,"items":current,"events":events,
-            "note":"Date shown is when the monitor detected a listing, not the seller's upload date."}
-    with open(OUT, "w", encoding="utf-8") as f: json.dump(data, f, ensure_ascii=False, indent=2)
-    print("Scan complete:", len(seen_pages), "pages,", len(records), "current listings;",
-          "baseline" if not initialized else "change detection active")
-if __name__ == "__main__": main()
+    data = {
+        "schema_version": SCHEMA_VERSION,
+        "updated_at": now,
+        "initialized": True,
+        "baseline_reset": not clean_baseline,
+        "pages_scanned": len(seen_pages),
+        "scan_limit": max_pages,
+        "items": current,
+        "events": events,
+        "note": ("Clean baseline established by the corrected catalogue parser. "
+                 "The previous category-page false positives were discarded. "
+                 "Dates are when the monitor detected a listing, not the seller's upload date. "
+                 "Each comic is listed within its series/category page on the source site."),
+    }
+    with open(OUT, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, ensure_ascii=False, indent=2)
+    print("Scan complete:", len(seen_pages), "catalogue pages,", len(records),
+          "individual comic records;", "clean baseline" if not clean_baseline else "change detection active")
+
+
+if __name__ == "__main__":
+    main()
