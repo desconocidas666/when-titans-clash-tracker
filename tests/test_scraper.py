@@ -53,6 +53,23 @@ class GradeParsingTests(unittest.TestCase):
         self.assertEqual(item["grade"], "VG 4.0")
         self.assertEqual(item["condition"], "")
 
+    def test_identical_copies_are_not_merged(self):
+        html = """
+        <div class="product">
+          <h3>Jungle Action 1 (FN 6.0)</h3>
+          <p>Price: £12.50</p>
+          <p>Condition: FN (6.0). Copy one.</p>
+        </div>
+        <div class="product">
+          <h3>Jungle Action 1 (FN 6.0)</h3>
+          <p>Price: £12.50</p>
+          <p>Condition: FN (6.0). Copy two.</p>
+        </div>
+        """
+        records = extract_records(BeautifulSoup(html, "html.parser"), "https://example.test/category.html")
+        self.assertEqual(len(records), 2)
+        self.assertEqual(len({item["id"] for item in records.values()}), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
