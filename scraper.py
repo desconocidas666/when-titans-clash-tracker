@@ -22,8 +22,8 @@ SESSION.headers.update(HEADERS)
 PRICE_RE = re.compile(r"£\s*[\d,]+(?:\.\d{1,2})?")
 # SellerDeck product headings on this site include a grade in brackets.
 GRADE_RE = re.compile(
-    r"\b(?:FR|P|G|G\+|G-|G/VG|VG|VG\+|VG-|VG/FN|FN|FN\+|FN-|FN/VF|VF|VF\+|VF-|VF/NM|NM|M)"
-    r"\s*\(?\s*\d(?:\.\d)?\s*\)?",
+    r"(?<![A-Z0-9])(?P<label>FR/G|G/VG|VG/FN|FN/VF|VF/NM|VG\\+|VG-|FN\\+|FN-|VF\\+|VF-|G\\+|G-|FR|P|G|VG|FN|VF|NM|M)"
+    r"\\s*\\(?\\s*(?P<score>\\d{1,2}(?:\\.\\d)?)\\s*\\)?(?![\\d.])",
     re.I,
 )
 SKIP = ("basket", "cart", "checkout", "search", "contact", "privacy", "terms",
@@ -75,7 +75,11 @@ def product_heading(node):
 
 
 def listing_block(heading):
-    """Find the smallest surrounding block containing exactly this product."""
+    """Find the smallest surrounding block containing exactly this product.
+
+    Condition is deliberately optional: SellerDeck sometimes omits that label
+    even though the heading and price identify a valid comic product block.
+    """
     node = heading
     for _ in range(7):
         parent = getattr(node, "parent", None)
@@ -85,8 +89,7 @@ def listing_block(heading):
         headings = [h for h in node.find_all(["h2", "h3", "h4"]) if product_heading(h)]
         block_text = text_of(node)
         if (len(headings) == 1 and headings[0] is heading
-                and PRICE_RE.search(block_text)
-                and re.search(r"\bCondition\s*:", block_text, re.I)):
+                and PRICE_RE.search(block_text)):
             return block_text
     return ""
 
@@ -115,7 +118,8 @@ def extract_records(soup, page_url):
         notes_match = re.search(r"\bNotes\s*:\s*(.*?)(?=\bCondition\s*:|$)", block, re.I)
         notes = notes_match.group(1).strip() if notes_match else ""
         price = price_match.group(0).replace(" ", "")
-        grade = grade_match.group(0).strip()
+        grade = f"{grade_match.group('label').upper()} {grade_match.group('score')}"
+        sold = bool(re.search(r"(?<![A-Z])SOLD(?![A-Z])", block, re.I))
         stable = "|".join((page_url, title.casefold()))
         item_id = hashlib.sha1(stable.encode("utf-8")).hexdigest()
         found[item_id] = {
@@ -124,6 +128,7 @@ def extract_records(soup, page_url):
             "price": price,
             "grade": grade,
             "condition": condition[:900],
+            "status": "sold" if sold else "in_stock",
             "notes": notes[:500],
             "url": page_url,
             "category_page": page_url,
@@ -180,15 +185,17 @@ def main():
         prior = previous.get(key)
         item["first_seen"] = prior.get("first_seen", now) if prior else now
         item["last_seen"] = now
-        item["status"] = "in_stock"
         if prior:
             if prior.get("price") != item.get("price"):
                 events.append({"type": "price_change", "date": now, "title": item["title"],
                                "url": item["url"], "from": prior.get("price", ""),
                                "to": item.get("price", "")})
-            if prior.get("status") == "removed":
+            if prior.get("status") in ("removed", "sold") and item["status"] == "in_stock":
                 events.append({"type": "restocked", "date": now, "title": item["title"],
                                "url": item["url"]})
+            if prior.get("status") == "in_stock" and item["status"] == "sold":
+                events.append({"type": "sold", "date": now, "title": item["title"],
+                               "url": item["url"], "price": item.get("price", "")})
         elif initialized:
             item["new_detected"] = now
             events.append({"type": "new_listing", "date": now, "title": item["title"],
@@ -217,7 +224,8 @@ def main():
         "note": ("Clean baseline established by the corrected catalogue parser. "
                  "The previous category-page false positives were discarded. "
                  "Dates are when the monitor detected a listing, not the seller's upload date. "
-                 "Each comic is listed within its series/category page on the source site."),
+                 "Each comic is listed within its series/category page on the source site. "
+                 "Explicit SOLD labels are retained as sold; missing condition text does not discard a product."),
     }
     with open(OUT, "w", encoding="utf-8") as handle:
         json.dump(data, handle, ensure_ascii=False, indent=2)
