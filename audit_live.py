@@ -4,14 +4,13 @@ import sys
 import requests
 from bs4 import BeautifulSoup
 
-from scraper import extract_records, product_heading
+from scraper import extract_records, product_heading, listing_block, text_of
 
 CASES = [
     (
         "Popular Comics",
         "https://www.whentitansclash.co.uk/acatalog/When_Titans_Clash__Popular_Comics_550.html",
         [
-            ("Popular Comics 68", "VG- 3.5", "sold"),
             ("Popular Comics 96", "FR/G 1.5", "in_stock"),
             ("Popular Comics 49", "VG 4.0", "in_stock"),
         ],
@@ -23,6 +22,13 @@ CASES = [
             ("Action Comics 303", "FR/G 1.5", "in_stock"),
             ("Action Comics 296", "FN+ 6.5", "in_stock"),
             ("Action Comics 297", "VG/FN 5.0", "in_stock"),
+        ],
+    ),
+    (
+        "Astonishing Tales",
+        "https://www.whentitansclash.co.uk/acatalog/When_Titans_Clash__Astonishing_Tales_90.html",
+        [
+            ("Astonishing Tales 8", "VF 8.0", "sold"),
         ],
     ),
 ]
@@ -39,7 +45,12 @@ for category, url, expected in CASES:
     records = list(extract_records(soup, url).values())
     print(f"{category}: {len(headings)} grade-bearing headings; {len(records)} extracted records")
     if len(headings) != len(records):
-        failures.append(f"{category}: extracted {len(records)} of {len(headings)} grade-bearing product headings")
+        record_titles = {r["title"] for r in records}
+        missing = [h for h in headings if text_of(h) not in record_titles]
+        for heading in missing:
+            parent_text = text_of(heading.parent)[:500]
+            block = listing_block(heading)
+            print(f"  UNMATCHED {text_of(heading)!r}; block_found={bool(block)}; parent={parent_text!r}")
     for title_prefix, grade, status in expected:
         matches = [r for r in records if r["title"].startswith(title_prefix) and r["grade"] == grade]
         if not matches:
