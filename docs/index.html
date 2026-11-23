@@ -14,7 +14,7 @@ section{margin:28px 0}details{margin-top:10px}.empty{padding:28px;text-align:cen
 <header><h1>When Titans Clash — Stock Monitor</h1><div>New comic listings, stock changes and price history</div></header>
 <main><p id="status" class="muted">Loading latest inventory…</p>
 <div class="stats"><div class="stat"><b id="total">—</b>Tracked listings</div><div class="stat"><b id="newcount">—</b>New detections</div><div class="stat"><b id="changes">—</b>Recent changes</div><div class="stat"><b id="pages">—</b>Pages scanned</div></div>
-<div class="controls"><input id="q" type="search" placeholder="Search title, issue, condition…" style="flex:1;min-width:220px"><select id="statusFilter"><option value="all">All listings</option><option value="in_stock">In stock</option><option value="removed">Removed</option><option value="new">Newly detected</option></select><select id="sort"><option value="newest">Newest detected</option><option value="title">Title A–Z</option><option value="price">Price low–high</option></select></div>
+<div class="controls"><input id="q" type="search" placeholder="Search title, issue, condition…" style="flex:1;min-width:220px"><select id="statusFilter"><option value="all">All listings</option><option value="in_stock">In stock</option><option value="sold">Sold</option><option value="removed">Removed</option><option value="new">Newly detected</option></select><select id="sort"><option value="newest">Newest detected</option><option value="title">Title A–Z</option><option value="price">Price low–high</option></select></div>
 <section><h2>Comic inventory</h2><div style="overflow-x:auto"><table><thead><tr><th>Comic / issue</th><th>Grade / condition</th><th>Price</th><th>Detected</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div><div id="empty" class="empty" hidden>No matching listings found.</div></section>
 <section><details open><summary><b>Recent activity</b></summary><ul id="events"></ul></details></section>
 <p class="muted" id="note"></p><p class="muted">Source: <a href="https://www.whentitansclash.co.uk/" target="_blank" rel="noopener">When Titans Clash</a>. This monitor checks the public catalogue; dates are detection dates, not confirmed upload dates.</p>
@@ -26,10 +26,10 @@ function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&l
 function date(s){if(!s)return "—";let d=new Date(s);return isNaN(d)?"—":d.toLocaleString("en-GB",{dateStyle:"medium",timeStyle:"short"});}
 function render(){
  const all=Object.values(db.items||{}), events=(db.events||[]).slice().reverse();
- $("total").textContent=all.filter(x=>x.status!=="removed").length;
+ $("total").textContent=all.filter(x=>x.status==="in_stock").length;
  $("newcount").textContent=events.filter(x=>x.type==="new_listing").length;
  $("changes").textContent=events.length;$("pages").textContent=db.pages_scanned??"—";
- $("status").textContent="Last scan: "+date(db.updated_at)+" · Inventory refreshes automatically every 12 hours.";
+ $("status").textContent="Last scan: "+date(db.updated_at)+" · Inventory refreshes automatically every 12 hours. Sold listings are shown separately.";
  $("note").textContent=db.note||"";
  const q=$("q").value.toLowerCase(), sf=$("statusFilter").value, sort=$("sort").value;
  let items=all.filter(x=>{
