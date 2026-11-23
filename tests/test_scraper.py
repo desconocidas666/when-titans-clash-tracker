@@ -15,6 +15,9 @@ class GradeParsingTests(unittest.TestCase):
             "Fantastic Four 214 (G- 1.8)": "G- 1.8",
             "Action Comics 296 (FN+ 6.5)": "FN+ 6.5",
             "Popular Comics 93 (VF 8.0)": "VF 8.0",
+            "Fantastic Four Annual 18 (NM- 9.2)": "NM- 9.2",
+            "DC Comics Presents 1 (CGC 6.0)": "CGC 6.0",
+            "CGC graded example (CBCS 9.8)": "CBCS 9.8",
         }
         for title, expected in cases.items():
             with self.subTest(title=title):
