@@ -26,6 +26,25 @@ GRADE_RE = re.compile(
     r"\s*\(?\s*(?P<score>\d{1,2}(?:\.\d)?)\s*\)?(?![\d.])",
     re.I,
 )
+
+
+# Seller notes commonly start with a publication month and year, e.g. "Mar 1940".
+PUBLISHED_RE = re.compile(
+    r"\b(?P<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)"
+    r"\.?\s+(?P<year>19\d{2}|20\d{2})\b",
+    re.I,
+)
+
+
+def published_date_from_notes(notes):
+    """Return the publication month/year stated in the seller's Notes, if present."""
+    match = PUBLISHED_RE.search(notes or "")
+    if not match:
+        return ""
+    month = match.group("month").rstrip(".")[:3].title()
+    return f"{month} {match.group('year')}"
+
 SKIP = ("basket", "cart", "checkout", "search", "contact", "privacy", "terms",
         "postage", "grading", "about", "login", "register")
 
@@ -136,6 +155,7 @@ def extract_records(soup, page_url):
             "condition": condition[:900],
             "status": "sold" if sold else "in_stock",
             "notes": notes[:500],
+            "published_date": published_date_from_notes(notes),
             "url": page_url,
             "category_page": page_url,
         }
