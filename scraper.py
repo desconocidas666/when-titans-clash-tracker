@@ -96,12 +96,16 @@ def listing_block(heading):
 
 def extract_records(soup, page_url):
     found = {}
+    title_occurrences = {}
     # This SellerDeck catalogue displays each comic as a product block within its
     # series page; the individual stock item is not a separate HTML detail page.
     for heading in soup.find_all(["h2", "h3", "h4"]):
         title = text_of(heading)
         if not product_heading(heading):
             continue
+        title_key = title.casefold()
+        title_occurrences[title_key] = title_occurrences.get(title_key, 0) + 1
+        occurrence = title_occurrences[title_key]
         block = listing_block(heading)
         if not block:
             continue
@@ -119,6 +123,10 @@ def extract_records(soup, page_url):
         grade = f"{grade_match.group('label').upper()} {grade_match.group('score')}"
         sold = bool(re.search(r"(?<![A-Z])SOLD(?![A-Z])", block, re.I))
         stable = "|".join((page_url, title.casefold()))
+        # Preserve the existing ID for the first copy; distinguish further
+        # identical issue/grade headings instead of silently merging copies.
+        if occurrence > 1:
+            stable += f"|copy:{occurrence}"
         item_id = hashlib.sha1(stable.encode("utf-8")).hexdigest()
         found[item_id] = {
             "id": item_id,
