@@ -113,8 +113,6 @@ def extract_records(soup, page_url):
         # Keep the product-specific text only; never use a page-wide/sidebar block.
         condition_match = re.search(r"\bCondition\s*:\s*(.*)", block, re.I)
         condition = condition_match.group(1).strip() if condition_match else ""
-        if not condition:
-            continue
         notes_match = re.search(r"\bNotes\s*:\s*(.*?)(?=\bCondition\s*:|$)", block, re.I)
         notes = notes_match.group(1).strip() if notes_match else ""
         price = price_match.group(0).replace(" ", "")
