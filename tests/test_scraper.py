@@ -74,5 +74,32 @@ class GradeParsingTests(unittest.TestCase):
         self.assertEqual(len({item["id"] for item in records.values()}), 2)
 
 
+    def test_publication_date_is_extracted_from_notes(self):
+        html = """
+        <div class="product">
+          <h3>Popular Comics 49 (VG 4.0)</h3>
+          <p>Price: £67.50</p>
+          <p>Notes: Mar 1940. Featuring Martan the Marvel Man.</p>
+          <p>Condition: VG (4.0).</p>
+        </div>
+        """
+        records = extract_records(BeautifulSoup(html, "html.parser"), "https://example.test/category.html")
+        item = next(iter(records.values()))
+        self.assertEqual(item["published_date"], "Mar 1940")
+        self.assertTrue(item["notes"].startswith("Mar 1940."))
+
+    def test_publication_date_supports_full_month_name(self):
+        html = """
+        <div class="product">
+          <h3>Action Comics 1 (VG 4.0)</h3>
+          <p>Price: £100.00</p>
+          <p>Notes: September 1938. Classic issue.</p>
+        </div>
+        """
+        records = extract_records(BeautifulSoup(html, "html.parser"), "https://example.test/category.html")
+        item = next(iter(records.values()))
+        self.assertEqual(item["published_date"], "Sep 1938")
+
+
 if __name__ == "__main__":
     unittest.main()
