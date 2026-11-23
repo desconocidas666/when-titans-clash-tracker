@@ -3,6 +3,8 @@ name: Scan When Titans Clash catalogue
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/data.json"
   schedule:
     - cron: "17 */12 * * *"
   workflow_dispatch:
