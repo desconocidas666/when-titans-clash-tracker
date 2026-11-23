@@ -15,7 +15,7 @@ section{margin:28px 0}details{margin-top:10px}.empty{padding:28px;text-align:cen
 <main><p id="status" class="muted">Loading latest inventory…</p>
 <div class="stats"><div class="stat"><b id="total">—</b>Tracked listings</div><div class="stat"><b id="newcount">—</b>New detections</div><div class="stat"><b id="changes">—</b>Recent changes</div><div class="stat"><b id="pages">—</b>Pages scanned</div></div>
 <div class="controls"><input id="q" type="search" placeholder="Search title, issue, condition…" style="flex:1;min-width:220px"><select id="statusFilter"><option value="all">All listings</option><option value="in_stock">In stock</option><option value="sold">Sold</option><option value="removed">Removed</option><option value="new">Newly detected</option></select><select id="sort"><option value="newest">Newest detected</option><option value="title">Title A–Z</option><option value="price">Price low–high</option></select></div>
-<section><h2>Comic inventory</h2><div style="overflow-x:auto"><table><thead><tr><th>Comic / issue</th><th>Grade / condition</th><th>Price</th><th>Detected</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div><div id="empty" class="empty" hidden>No matching listings found.</div></section>
+<section><h2>Comic inventory</h2><div style="overflow-x:auto"><table><thead><tr><th>Comic / issue</th><th>Published</th><th>Grade / condition</th><th>Price</th><th>Notes</th><th>Detected</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div><div id="empty" class="empty" hidden>No matching listings found.</div></section>
 <section><details open><summary><b>Recent activity</b></summary><ul id="events"></ul></details></section>
 <p class="muted" id="note"></p><p class="muted">Source: <a href="https://www.whentitansclash.co.uk/" target="_blank" rel="noopener">When Titans Clash</a>. This monitor checks the public catalogue; dates are detection dates, not confirmed upload dates.</p>
 </main>
@@ -33,11 +33,11 @@ function render(){
  $("note").textContent=db.note||"";
  const q=$("q").value.toLowerCase(), sf=$("statusFilter").value, sort=$("sort").value;
  let items=all.filter(x=>{
-  const hay=[x.title,x.grade,x.condition,x.price].join(" ").toLowerCase();
+  const hay=[x.title,x.grade,x.condition,x.price,x.notes,x.published_date].join(" ").toLowerCase();
   return (!q||hay.includes(q))&&(sf==="all"||(sf==="new"?!!x.new_detected&&x.status!=="removed":x.status===sf));
  });
  items.sort((a,b)=>sort==="title"?a.title.localeCompare(b.title):sort==="price"?(parseFloat((a.price||"").replace(/[£,]/g,""))||999999)-(parseFloat((b.price||"").replace(/[£,]/g,""))||999999):String(b.new_detected||b.first_seen||"").localeCompare(String(a.new_detected||a.first_seen||"")));
- $("rows").innerHTML=items.map(x=>'<tr><td data-label="Comic"><a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>'+(x.new_detected?' <span class="pill new">NEW</span>':'')+'<div class="muted">'+esc(x.condition||"")+'</div></td><td data-label="Grade">'+esc(x.grade||"—")+'</td><td data-label="Price">'+esc(x.price||"—")+'</td><td data-label="Detected">'+date(x.new_detected||x.first_seen)+'</td><td data-label="Status"><span class="pill">'+esc(x.status||"in_stock")+'</span></td></tr>').join("");
+ $("rows").innerHTML=items.map(x=>'<tr><td data-label="Comic"><a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>'+(x.new_detected?' <span class="pill new">NEW</span>':'')+'<div class="muted">'+esc(x.condition||"")+'</div></td><td data-label="Published">'+esc(x.published_date||"—")+'</td><td data-label="Grade">'+esc(x.grade||"—")+'</td><td data-label="Price">'+esc(x.price||"—")+'</td><td data-label="Notes">'+esc(x.notes||"—")+'</td><td data-label="Detected">'+date(x.new_detected||x.first_seen)+'</td><td data-label="Status"><span class="pill">'+esc(x.status||"in_stock")+'</span></td></tr>').join("");
  $("empty").hidden=items.length>0;
  $("events").innerHTML=events.slice(0,40).map(e=>'<li><b>'+esc(e.type.replace("_"," "))+'</b> · '+date(e.date)+' · <a href="'+esc(e.url)+'">'+esc(e.title)+'</a> '+(e.from?'('+esc(e.from)+' → '+esc(e.to)+')':e.price?'('+esc(e.price)+')':'')+'</li>').join("")||"<li>No changes recorded yet.</li>";
 }
