@@ -1,6 +1,8 @@
 name: Scan When Titans Clash catalogue
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: "17 */12 * * *"
   workflow_dispatch:
@@ -27,6 +29,10 @@ jobs:
           python-version: "3.12"
       - name: Install parser
         run: pip install requests beautifulsoup4
+      - name: Run parser regression tests
+        run: python -m unittest discover -s tests -v
+      - name: Audit live catalogue examples
+        run: python audit_live.py
       - name: Scan catalogue
         run: python scraper.py
       - name: Save inventory history
