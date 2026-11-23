@@ -25,10 +25,10 @@ CASES = [
         ],
     ),
     (
-        "Astonishing Tales",
-        "https://www.whentitansclash.co.uk/acatalog/When_Titans_Clash__Astonishing_Tales_90.html",
+        "Hulk",
+        "https://www.whentitansclash.co.uk/acatalog/When_Titans_Clash__Hulk_122.html",
         [
-            ("Astonishing Tales 8", "VF 8.0", "sold"),
+            ("Incredible Hulk 200", "VG 4.0", "sold"),
         ],
     ),
 ]
@@ -51,6 +51,7 @@ for category, url, expected in CASES:
             parent_text = text_of(heading.parent)[:500]
             block = listing_block(heading)
             print(f"  UNMATCHED {text_of(heading)!r}; block_found={bool(block)}; parent={parent_text!r}")
+        failures.append(f"{category}: extracted {len(records)} of {len(headings)} grade-bearing product headings")
     for title_prefix, grade, status in expected:
         matches = [r for r in records if r["title"].startswith(title_prefix) and r["grade"] == grade]
         if not matches:
