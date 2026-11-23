@@ -22,7 +22,7 @@ SESSION.headers.update(HEADERS)
 PRICE_RE = re.compile(r"£\s*[\d,]+(?:\.\d{1,2})?")
 # SellerDeck product headings on this site include a grade in brackets.
 GRADE_RE = re.compile(
-    r"(?<![A-Z0-9])(?P<label>FR/G|G/VG|VG/FN|FN/VF|VF/NM|VG\+|VG-|FN\+|FN-|VF\+|VF-|G\+|G-|FR|P|G|VG|FN|VF|NM|M)"
+    r"(?<![A-Z0-9])(?P<label>CGC|CBCS|FR/G|G/VG|VG/FN|FN/VF|VF/NM|NM\+|NM-|VG\+|VG-|FN\+|FN-|VF\+|VF-|G\+|G-|FR|P|G|VG|FN|VF|NM|M)"
     r"\s*\(?\s*(?P<score>\d{1,2}(?:\.\d)?)\s*\)?(?![\d.])",
     re.I,
 )
