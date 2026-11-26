@@ -59,6 +59,13 @@ for category, url, expected in CASES:
             continue
         if not any(r["status"] == status for r in matches):
             failures.append(f"{category}: {title_prefix} expected status {status}, got {[r['status'] for r in matches]}")
+        if title_prefix == "Popular Comics 49":
+            item = next((r for r in matches if r["status"] == status), matches[0])
+            if not item.get("notes", "").startswith("Mar 1940."):
+                failures.append(f"{category}: Popular Comics 49 seller Notes not extracted: {item.get('notes', '')!r}")
+            if item.get("published_date") != "Mar 1940":
+                failures.append(f"{category}: Popular Comics 49 publication date expected 'Mar 1940', got {item.get('published_date')!r}")
+            print(f"  Notes/date audit · {item.get('notes', '')[:90]!r} · {item.get('published_date')!r}")
         print(f"  OK {title_prefix} · {grade} · {status}")
 
 if failures:
