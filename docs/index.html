@@ -36,11 +36,13 @@ function render(){
   const hay=[x.title,x.grade,x.condition,x.price,x.notes,x.published_date].join(" ").toLowerCase();
   return (!q||hay.includes(q))&&(sf==="all"||(sf==="new"?!!x.new_detected&&x.status!=="removed":x.status===sf));
  });
- items.sort((a,b)=>sort==="title"?a.title.localeCompare(b.title):sort==="price"?(parseFloat((a.price||"").replace(/[£,]/g,""))||999999)-(parseFloat((b.price||"").replace(/[£,]/g,""))||999999):String(b.new_detected||b.first_seen||"").localeCompare(String(a.new_detected||a.first_seen||"")));
+ const titleOrder=new Intl.Collator("en",{numeric:true,sensitivity:"base"});
+ items.sort((a,b)=>sort==="title"?titleOrder.compare(a.title,b.title):sort==="price"?(parseFloat((a.price||"").replace(/[£,]/g,""))||999999)-(parseFloat((b.price||"").replace(/[£,]/g,""))||999999):String(b.new_detected||b.first_seen||"").localeCompare(String(a.new_detected||a.first_seen||"")));
  $("rows").innerHTML=items.map(x=>'<tr><td data-label="Comic"><a href="'+esc(x.url)+'" target="_blank" rel="noopener">'+esc(x.title)+'</a>'+(x.new_detected?' <span class="pill new">NEW</span>':'')+'<div class="muted">'+esc(x.condition||"")+'</div></td><td data-label="Published">'+esc(x.published_date||"—")+'</td><td data-label="Grade">'+esc(x.grade||"—")+'</td><td data-label="Price">'+esc(x.price||"—")+'</td><td data-label="Notes">'+esc(x.notes||"—")+'</td><td data-label="Detected">'+date(x.new_detected||x.first_seen)+'</td><td data-label="Status"><span class="pill">'+esc(x.status||"in_stock")+'</span></td></tr>').join("");
  $("empty").hidden=items.length>0;
  $("events").innerHTML=events.slice(0,40).map(e=>'<li><b>'+esc(e.type.replace("_"," "))+'</b> · '+date(e.date)+' · <a href="'+esc(e.url)+'">'+esc(e.title)+'</a> '+(e.from?'('+esc(e.from)+' → '+esc(e.to)+')':e.price?'('+esc(e.price)+')':'')+'</li>').join("")||"<li>No changes recorded yet.</li>";
 }
-["q","statusFilter","sort"].forEach(id=>$(id).addEventListener("input",render));
+$("q").addEventListener("input",render);
+["statusFilter","sort"].forEach(id=>$(id).addEventListener("change",render));
 fetch("./data.json?"+Date.now()).then(r=>{if(!r.ok)throw Error("No inventory file yet");return r.json()}).then(d=>{db=d;render()}).catch(e=>{$("status").textContent="The first scan has not completed yet. Open the Actions tab in GitHub to check the initial run.";});
 </script></body></html>
